@@ -16,6 +16,7 @@ type DNS struct {
 	RedisClient *redis.Client
 	Proto       string
 	Port        int
+	Bind        string
 	server      *dns.Server
 }
 
@@ -72,6 +73,7 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	// Strip trailing dot from domain name for Redis lookup
 	domainName := strings.TrimSuffix(question.Name, ".")
 	log.Printf("Question: %s %s\n", domainName, dnsType)
+	domainName = strings.ToLower(domainName)
 
 	var answers []string
 	var err error

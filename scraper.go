@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/go-routeros/routeros"
+	"github.com/redis/go-redis/v9"
 )
 
 type Scraper struct {
@@ -99,6 +100,8 @@ func (s *Scraper) scrape() {
 			} else {
 				domain = hostname
 			}
+
+			domain = strings.ToLower(domain)
 
 			log.Printf("  Lease: %s -> %s (%s) [%s]\n", domain, ipAddress, macAddress, status)
 
