@@ -1,94 +1,65 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/miekg/dns"
 )
 
-type DNSQuestion struct {
-	Name string `json:"name"`
-	Type int    `json:"type"`
-}
-
-type DNSAnswer struct {
-	Name string `json:"name"`
-	Type int    `json:"type"`
-	TTL  int    `json:"TTL"`
-	Data string `json:"data"`
-}
-
-type DNSResponse struct {
-	Status   int           `json:"Status"`
-	TC       bool          `json:"TC"`
-	RD       bool          `json:"RD"`
-	RA       bool          `json:"RA"`
-	AD       bool          `json:"AD"`
-	CD       bool          `json:"CD"`
-	Question []DNSQuestion `json:"Question"`
-	Answer   []DNSAnswer   `json:"Answer"`
-}
-
 // DNSRecord represents a DNS answer with type and TTL
+// Still used by local record sources (router, DHCP)
 type DNSRecord struct {
 	Type uint16 `json:"type"`
 	TTL  uint32 `json:"ttl"`
 	Data string `json:"data"`
 }
 
-func QueryDOH(name, dnsType string) ([]DNSRecord, error) {
-	// Build URL safely using url.Parse
-	parsedURL, err := url.Parse(cfg.DohServer)
+// QueryDOH performs a DNS-over-HTTPS query using RFC 8484 wire format
+func QueryDOH(name string, qtype uint16) (*dns.Msg, error) {
+	// Create DNS query message
+	m := new(dns.Msg)
+	m.SetQuestion(name, qtype)
+	m.RecursionDesired = true
+
+	// Pack the message into wire format
+	wireData, err := m.Pack()
 	if err != nil {
-		return nil, fmt.Errorf("invalid DoH server URL: %w", err)
+		return nil, fmt.Errorf("failed to pack DNS message: %w", err)
 	}
 
-	// Add query parameters safely
-	query := parsedURL.Query()
-	query.Set("name", name)
-	query.Set("type", dnsType)
-	parsedURL.RawQuery = query.Encode()
-
-	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	// Create POST request with wire format
+	req, err := http.NewRequest("POST", cfg.DohServer, bytes.NewReader(wireData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("Accept", "application/dns-json")
 
+	req.Header.Set("Content-Type", "application/dns-message")
+	req.Header.Set("Accept", "application/dns-message")
+
+	// Send the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DoH server returned status %d", resp.StatusCode)
+	}
+
+	// Read and unpack the response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var dnsResp DNSResponse
-	if err := json.Unmarshal(body, &dnsResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	responseMsg := new(dns.Msg)
+	if err := responseMsg.Unpack(body); err != nil {
+		return nil, fmt.Errorf("failed to unpack DNS response: %w", err)
 	}
 
-	// Convert dnsType string to numeric type
-	requestedType := dns.StringToType[dnsType]
-
-	var records []DNSRecord
-	for _, answer := range dnsResp.Answer {
-		// Include requested type records AND CNAME records
-		if uint16(answer.Type) == requestedType || answer.Type == 5 { // 5 = CNAME
-			records = append(records, DNSRecord{
-				Type: uint16(answer.Type),
-				TTL:  uint32(answer.TTL),
-				Data: answer.Data,
-			})
-		}
-	}
-
-	return records, nil
+	return responseMsg, nil
 }
