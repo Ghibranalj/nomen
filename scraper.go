@@ -105,14 +105,8 @@ func (s *Scraper) scrape() {
 
 			log.Printf("  Lease: %s -> %s (%s) [%s]\n", domain, ipAddress, macAddress, status)
 
-			// Store in Redis with TTL (key format: dnsType:domain)
-			key := fmt.Sprintf("A:%s", domain)
-			err := s.RedisClient.Set(s.ctx, key, ipAddress, s.TTL).Err()
-			if err != nil {
-				log.Printf("  Failed to store in Redis: %v\n", err)
-			} else {
-				log.Printf("  Stored: %s -> %s (TTL: %v)\n", key, ipAddress, s.TTL)
-			}
+			// Use consolidated CacheDNS function
+			CacheDNS(s.RedisClient, domain, "A", []string{ipAddress}, s.TTL)
 		}
 	}
 }

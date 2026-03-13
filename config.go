@@ -3,6 +3,7 @@ package main
 import "github.com/spf13/viper"
 
 type Mikrotik struct {
+	Name    string `mapstructure:"name"`
 	IP       string `mapstructure:"IP"`
 	Port     int    `mapstructure:"Port"`
 	User     string `mapstructure:"User"`
@@ -18,6 +19,7 @@ type Config struct {
 	Proto                 string     `mapstructure:"Proto"`
 	ScrapeIntervalMinutes int        `mapstructure:"ScrapeIntervalMinutes"`
 	DnsTTLMinutes         int        `mapstructure:"DnsTTLMinutes"`
+	RouterTLD             string     `mapstructure:"RouterTLD"` // Global TLD for router names
 }
 
 var (

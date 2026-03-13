@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -27,6 +30,9 @@ func main() {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 	log.Println("Connected to Redis")
+
+	// Initialize static router records
+	initRouterRecords(redisClient, cfg.Mikrotik, cfg.RouterTLD, cfg.DnsTTLMinutes)
 
 	scraper := NewScraper(redisClient, cfg.Mikrotik, cfg.ScrapeIntervalMinutes, cfg.DnsTTLMinutes)
 	scraper.Start()
@@ -52,4 +58,28 @@ func main() {
 	dns.Stop()
 
 	log.Println("Shutdown complete")
+}
+
+// initRouterRecords stores static router A records in Redis at startup
+func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTLD string, ttlMinutes int) {
+	ttl := time.Duration(ttlMinutes) * time.Minute
+
+	log.Println("Initializing router DNS records...")
+
+	for _, mikrotik := range mikrotiks {
+		if mikrotik.Name == "" {
+			log.Printf("  Skipping router at %s (no name configured)\n", mikrotik.IP)
+			continue
+		}
+
+		var routerDomain string
+		if routerTLD != "" {
+			routerDomain = fmt.Sprintf("%s.%s", mikrotik.Name, routerTLD)
+		} else {
+			routerDomain = mikrotik.Name
+		}
+		routerDomain = strings.ToLower(routerDomain)
+
+		CacheDNS(redisClient, routerDomain, "A", []string{mikrotik.IP}, ttl)
+	}
 }

@@ -1,12 +1,9 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
@@ -20,44 +17,6 @@ type DNS struct {
 	server      *dns.Server
 }
 
-func (d *DNS) queryRedis(name, dnsType string) ([]string, error) {
-	ctx := context.Background()
-	key := fmt.Sprintf("%s:%s", dnsType, name)
-	value, err := d.RedisClient.Get(ctx, key).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	// Try to parse as JSON array (for multiple answers)
-	var answers []string
-	if err := json.Unmarshal([]byte(value), &answers); err != nil {
-		// If not JSON, treat as single value
-		return []string{value}, nil
-	}
-	return answers, nil
-}
-
-func (d *DNS) cacheDOH(name, dnsType string, answers []string) {
-	ctx := context.Background()
-	key := fmt.Sprintf("%s:%s", dnsType, name)
-
-	// Store as JSON array (for multiple answers)
-	value, err := json.Marshal(answers)
-	if err != nil {
-		log.Printf("Failed to marshal answers: %v\n", err)
-		return
-	}
-
-	// Cache DOH responses for 5 minutes
-	ttl := 5 * time.Minute
-	err = d.RedisClient.Set(ctx, key, value, ttl).Err()
-	if err != nil {
-		log.Printf("Failed to cache DOH response: %v\n", err)
-	} else {
-		log.Printf("Cached DOH response: %s -> %v (TTL: %v)\n", key, answers, ttl)
-	}
-}
-
 func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -69,33 +28,16 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 
 	question := r.Question[0]
 	dnsType := dns.TypeToString[question.Qtype]
+	domainName := question.Name
 
-	// Strip trailing dot from domain name for Redis lookup
-	domainName := strings.TrimSuffix(question.Name, ".")
-	log.Printf("Question: %s %s\n", domainName, dnsType)
-	domainName = strings.ToLower(domainName)
+	log.Printf("Question: %s %s\n", strings.TrimSuffix(domainName, "."), dnsType)
 
-	var answers []string
-	var err error
-
-	// Check Redis first
-	answers, err = d.queryRedis(domainName, dnsType)
+	// Use consolidated FetchDNS (handles cache + DoH fallback)
+	answers, err := FetchDNS(d.RedisClient, domainName, dnsType)
 	if err != nil {
-		log.Printf("Redis miss for %s\n", domainName)
-		// Fetch from DOH if Redis miss (use original name with dot for DOH)
-		answers, err = QueryDOH(question.Name, dnsType)
-		if err != nil {
-			log.Printf("DOH query failed: %v\n", err)
-			w.WriteMsg(m)
-			return
-		}
-		log.Printf("DOH answers: %v\n", answers)
-		// Cache the DOH response
-		if len(answers) > 0 {
-			d.cacheDOH(domainName, dnsType, answers)
-		}
-	} else {
-		log.Printf("Redis hit: %s -> %v\n", domainName, answers)
+		log.Printf("DNS query failed: %v\n", err)
+		w.WriteMsg(m)
+		return
 	}
 
 	// Add answers to response
