@@ -16,8 +16,7 @@ func FetchDNS(redisClient *redis.Client, name, dnsType string) ([]DNSRecord, err
 	ctx := context.Background()
 
 	// Normalize: lowercase and strip trailing dot
-	name = strings.ToLower(strings.TrimSuffix(name, "."))
-	key := buildRedisKey(dnsType, name)
+	key := buildRedisKey(dnsType, strings.ToLower(strings.TrimSuffix(name, ".")))
 
 	// Try Redis first
 	value, err := redisClient.Get(ctx, key).Result()
@@ -34,11 +33,6 @@ func FetchDNS(redisClient *redis.Client, name, dnsType string) ([]DNSRecord, err
 	records, err := QueryDOH(name, dnsType)
 	if err != nil {
 		return nil, err
-	}
-
-	// Cache the result
-	if len(records) > 0 {
-		CacheDNS(redisClient, name, dnsType, records, 5*time.Minute)
 	}
 
 	return records, nil
