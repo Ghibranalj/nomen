@@ -109,13 +109,13 @@ func (s *Scraper) scrape() {
 
 			// Create DNS message for A record
 			msg := new(dns.Msg)
-			msg.SetQuestion(domain, dns.TypeA)
+			msg.SetQuestion(domain + ".", dns.TypeA)
 			msg.Response = true
 			msg.RecursionAvailable = true
 
 			rr := &dns.A{
 				Hdr: dns.RR_Header{
-					Name:   domain,
+					Name:   domain + ".",
 					Rrtype: dns.TypeA,
 					Class:  dns.ClassINET,
 					Ttl:    uint32(s.TTL.Seconds()),

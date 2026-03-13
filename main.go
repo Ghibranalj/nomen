@@ -83,13 +83,13 @@ func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTL
 		routerDomain = strings.ToLower(routerDomain)
 
 		msg := new(dns.Msg)
-		msg.SetQuestion(routerDomain, dns.TypeA)
+		msg.SetQuestion(routerDomain + ".", dns.TypeA)
 		msg.Response = true
 		msg.RecursionAvailable = true
 
 		rr := &dns.A{
 			Hdr: dns.RR_Header{
-				Name:   routerDomain,
+				Name:   routerDomain + ".",
 				Rrtype: dns.TypeA,
 				Class:  dns.ClassINET,
 				Ttl:    uint32(ttl.Seconds()),
