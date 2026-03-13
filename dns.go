@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
@@ -24,7 +26,35 @@ func (d *DNS) queryRedis(name, dnsType string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{value}, nil
+
+	// Try to parse as JSON array (for multiple answers)
+	var answers []string
+	if err := json.Unmarshal([]byte(value), &answers); err != nil {
+		// If not JSON, treat as single value
+		return []string{value}, nil
+	}
+	return answers, nil
+}
+
+func (d *DNS) cacheDOH(name, dnsType string, answers []string) {
+	ctx := context.Background()
+	key := fmt.Sprintf("%s:%s", dnsType, name)
+
+	// Store as JSON array (for multiple answers)
+	value, err := json.Marshal(answers)
+	if err != nil {
+		log.Printf("Failed to marshal answers: %v\n", err)
+		return
+	}
+
+	// Cache DOH responses for 5 minutes
+	ttl := 5 * time.Minute
+	err = d.RedisClient.Set(ctx, key, value, ttl).Err()
+	if err != nil {
+		log.Printf("Failed to cache DOH response: %v\n", err)
+	} else {
+		log.Printf("Cached DOH response: %s -> %v (TTL: %v)\n", key, answers, ttl)
+	}
 }
 
 func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
@@ -48,9 +78,7 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 
 	// Check Redis first
 	answers, err = d.queryRedis(domainName, dnsType)
-	if err == nil {
-		log.Printf("Redis hit: %s -> %v\n", domainName, answers)
-	} else {
+	if err != nil {
 		log.Printf("Redis miss for %s\n", domainName)
 		// Fetch from DOH if Redis miss (use original name with dot for DOH)
 		answers, err = QueryDOH(question.Name, dnsType)
@@ -60,6 +88,12 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			return
 		}
 		log.Printf("DOH answers: %v\n", answers)
+		// Cache the DOH response
+		if len(answers) > 0 {
+			d.cacheDOH(domainName, dnsType, answers)
+		}
+	} else {
+		log.Printf("Redis hit: %s -> %v\n", domainName, answers)
 	}
 
 	// Add answers to response
