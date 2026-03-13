@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-routeros/routeros"
+	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -106,7 +107,12 @@ func (s *Scraper) scrape() {
 			log.Printf("  Lease: %s -> %s (%s) [%s]\n", domain, ipAddress, macAddress, status)
 
 			// Use consolidated CacheDNS function
-			CacheDNS(s.RedisClient, domain, "A", []string{ipAddress}, s.TTL)
+			records := []DNSRecord{{
+				Type: dns.TypeA,
+				TTL:  uint32(s.TTL.Seconds()),
+				Data: ipAddress,
+			}}
+			CacheDNS(s.RedisClient, domain, "A", records, s.TTL)
 		}
 	}
 }

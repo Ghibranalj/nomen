@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -40,13 +41,96 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	// Add answers to response
-	for _, ans := range answers {
-		rr, err := dns.NewRR(fmt.Sprintf("%s %s %s", question.Name, dnsType, ans))
-		if err != nil {
-			log.Printf("Failed to create RR: %v\n", err)
-			continue
+	// Add answers to response based on record type
+	for _, record := range answers {
+		var rr dns.RR
+		var err error
+
+		switch record.Type {
+		case dns.TypeA:
+			rr = &dns.A{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				A: net.ParseIP(record.Data),
+			}
+		case dns.TypeAAAA:
+			rr = &dns.AAAA{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeAAAA,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				AAAA: net.ParseIP(record.Data),
+			}
+		case dns.TypeCNAME:
+			rr = &dns.CNAME{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeCNAME,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				Target: record.Data,
+			}
+		case dns.TypeMX:
+			// MX records are stored as "priority target"
+			priority := uint16(10) // default priority
+			target := record.Data
+			// Try to parse "priority target" format
+			var p uint32
+			n, _ := fmt.Sscanf(record.Data, "%d %s", &p, &target)
+			if n == 2 {
+				priority = uint16(p)
+			}
+			rr = &dns.MX{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeMX,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				Preference: priority,
+				Mx:         target,
+			}
+		case dns.TypeNS:
+			rr = &dns.NS{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeNS,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				Ns: record.Data,
+			}
+		case dns.TypeTXT:
+			rr = &dns.TXT{
+				Hdr: dns.RR_Header{
+					Name:   question.Name,
+					Rrtype: dns.TypeTXT,
+					Class:  dns.ClassINET,
+					Ttl:    record.TTL,
+				},
+				Txt: []string{record.Data},
+			}
+		case dns.TypeSOA:
+			// SOA records are stored as "ns mbox serial refresh retry expire minimum"
+			// We'll try to use the generic parser for SOA
+			fallthrough
+		default:
+			// For unknown types and SOA, try generic RR creation
+			rr, err = dns.NewRR(fmt.Sprintf("%s %d IN %s %s",
+				question.Name, record.TTL, dns.TypeToString[record.Type], record.Data))
+			if err != nil {
+				log.Printf("Failed to create RR for type %d: %v\n", record.Type, err)
+				continue
+			}
 		}
+
 		m.Answer = append(m.Answer, rr)
 	}
 

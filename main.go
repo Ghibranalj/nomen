@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -80,6 +81,11 @@ func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTL
 		}
 		routerDomain = strings.ToLower(routerDomain)
 
-		CacheDNS(redisClient, routerDomain, "A", []string{mikrotik.IP}, ttl)
+		records := []DNSRecord{{
+			Type: dns.TypeA,
+			TTL:  uint32(ttl.Seconds()),
+			Data: mikrotik.IP,
+		}}
+		CacheDNS(redisClient, routerDomain, "A", records, ttl)
 	}
 }

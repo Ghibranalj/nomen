@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/miekg/dns"
 )
 
 type DNSQuestion struct {
@@ -31,7 +33,14 @@ type DNSResponse struct {
 	Answer   []DNSAnswer   `json:"Answer"`
 }
 
-func QueryDOH(name, dnsType string) ([]string, error) {
+// DNSRecord represents a DNS answer with type and TTL
+type DNSRecord struct {
+	Type uint16 `json:"type"`
+	TTL  uint32 `json:"ttl"`
+	Data string `json:"data"`
+}
+
+func QueryDOH(name, dnsType string) ([]DNSRecord, error) {
 	// Build URL safely using url.Parse
 	parsedURL, err := url.Parse(cfg.DohServer)
 	if err != nil {
@@ -66,10 +75,20 @@ func QueryDOH(name, dnsType string) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	var ips []string
+	// Convert dnsType string to numeric type
+	requestedType := dns.StringToType[dnsType]
+
+	var records []DNSRecord
 	for _, answer := range dnsResp.Answer {
-		ips = append(ips, answer.Data)
+		// Include requested type records AND CNAME records
+		if uint16(answer.Type) == requestedType || answer.Type == 5 { // 5 = CNAME
+			records = append(records, DNSRecord{
+				Type: uint16(answer.Type),
+				TTL:  uint32(answer.TTL),
+				Data: answer.Data,
+			})
+		}
 	}
 
-	return ips, nil
+	return records, nil
 }
