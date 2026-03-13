@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -106,13 +107,25 @@ func (s *Scraper) scrape() {
 
 			log.Printf("  Lease: %s -> %s (%s) [%s]\n", domain, ipAddress, macAddress, status)
 
-			// Use consolidated CacheDNS function
-			records := []DNSRecord{{
-				Type: dns.TypeA,
-				TTL:  uint32(s.TTL.Seconds()),
-				Data: ipAddress,
-			}}
-			CacheDNS(s.RedisClient, domain, "A", records, s.TTL)
+			// Create DNS message for A record
+			msg := new(dns.Msg)
+			msg.SetQuestion(domain, dns.TypeA)
+			msg.Response = true
+			msg.RecursionAvailable = true
+
+			rr := &dns.A{
+				Hdr: dns.RR_Header{
+					Name:   domain,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    uint32(s.TTL.Seconds()),
+				},
+				A: net.ParseIP(ipAddress),
+			}
+			msg.Answer = append(msg.Answer, rr)
+
+			// Cache using wire format
+			CacheDNS(s.RedisClient, domain, "A", msg, s.TTL)
 		}
 	}
 }

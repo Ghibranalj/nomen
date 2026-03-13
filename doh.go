@@ -9,14 +9,6 @@ import (
 	"github.com/miekg/dns"
 )
 
-// DNSRecord represents a DNS answer with type and TTL
-// Still used by local record sources (router, DHCP)
-type DNSRecord struct {
-	Type uint16 `json:"type"`
-	TTL  uint32 `json:"ttl"`
-	Data string `json:"data"`
-}
-
 // QueryDOH performs a DNS-over-HTTPS query using RFC 8484 wire format
 func QueryDOH(name string, qtype uint16) (*dns.Msg, error) {
 	// Create DNS query message

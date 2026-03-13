@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -81,11 +82,22 @@ func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTL
 		}
 		routerDomain = strings.ToLower(routerDomain)
 
-		records := []DNSRecord{{
-			Type: dns.TypeA,
-			TTL:  uint32(ttl.Seconds()),
-			Data: mikrotik.IP,
-		}}
-		CacheDNS(redisClient, routerDomain, "A", records, ttl)
+		msg := new(dns.Msg)
+		msg.SetQuestion(routerDomain, dns.TypeA)
+		msg.Response = true
+		msg.RecursionAvailable = true
+
+		rr := &dns.A{
+			Hdr: dns.RR_Header{
+				Name:   routerDomain,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    uint32(ttl.Seconds()),
+			},
+			A: net.ParseIP(mikrotik.IP),
+		}
+		msg.Answer = append(msg.Answer, rr)
+
+		CacheDNS(redisClient, routerDomain, "A", msg, ttl)
 	}
 }
