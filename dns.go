@@ -37,9 +37,18 @@ func (d *DNS) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	answers, err := FetchDNS(d.RedisClient, domainName, dnsType)
 	if err != nil {
 		log.Printf("DNS query failed: %v\n", err)
+		m.SetRcode(r, 2)
 		w.WriteMsg(m)
 		return
 	}
+
+	if len(answers) == 0 {
+		m.SetRcode(r, 3)
+		w.WriteMsg(m)
+		return
+	}
+
+	m.SetRcode(r, 0)
 
 	// Add answers to response based on record type
 	for _, record := range answers {
