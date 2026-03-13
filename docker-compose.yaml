@@ -1,0 +1,27 @@
+services:
+  nomen:
+    build: .
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      - redis
+    restart: always
+    # Uncomment to build from local source
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+  redis:
+    image: redis:alpine
+    restart: always
+    # Uncomment to expose Redis port for debugging
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
