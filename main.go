@@ -94,7 +94,7 @@ func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTL
 		msg.Response = true
 		msg.RecursionAvailable = true
 
-		dnsTTL := cfg.DnsTTLMinutes
+		dnsTTL := ttlMinutes * 60
 		rr := &dns.A{
 			Hdr: dns.RR_Header{
 				Name:   routerDomain + ".",
