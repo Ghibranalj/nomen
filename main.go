@@ -33,6 +33,12 @@ func main() {
 	}
 	log.Println("Connected to Redis")
 
+	// flush redis
+	err = redisClient.FlushAll(context.Background()).Err()
+	if err != nil {
+		log.Printf("Error flushin redis: %v, continuing", err)
+	}
+
 	// Initialize static router records
 	if err := initRouterRecords(redisClient, cfg.Mikrotik, cfg.RouterTLD, cfg.DnsTTLMinutes); err != nil {
 		log.Fatalf("Failed to initialize router records: %v", err)
