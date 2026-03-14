@@ -35,24 +35,32 @@ func FetchDNS(redisClient *redis.Client, name string, qtype uint16) (*dns.Msg, e
 	return QueryDOH(name, qtype)
 }
 
-// CacheDNS stores DNS messages in Redis using wire format
-func CacheDNS(redisClient *redis.Client, name, dnsType string, msg *dns.Msg, cacheTTL time.Duration) {
+// CacheDNS stores DNS messages in Redis using wire format.
+// A cacheTTL of 0 means the key will be stored permanently without expiration.
+func CacheDNS(redisClient *redis.Client, name, dnsType string, msg *dns.Msg, cacheTTL time.Duration) error {
 	ctx := context.Background()
 	name = strings.ToLower(strings.TrimSuffix(name, "."))
 	key := buildRedisKey(dnsType, name)
 
 	wireData, err := msg.Pack()
 	if err != nil {
-		log.Printf("Failed to pack DNS message: %v\n", err)
-		return
+		return fmt.Errorf("pack DNS message: %w", err)
 	}
 
 	err = redisClient.Set(ctx, key, wireData, cacheTTL).Err()
 	if err != nil {
-		log.Printf("Failed to cache in Redis: %v\n", err)
-	} else {
-		log.Printf("  Cached: %s -> %d records (cache TTL: %v)\n", key, len(msg.Answer), cacheTTL)
+		return fmt.Errorf("redis set: %w", err)
 	}
+
+	// When cacheTTL is 0, ensure the key has no expiration (permanent storage)
+	if cacheTTL == 0 {
+		if err := redisClient.Persist(ctx, key).Err(); err != nil {
+			return fmt.Errorf("redis persist: %w", err)
+		}
+	}
+
+	log.Printf("  Cached: %s -> %d records (cache TTL: %v)\n", key, len(msg.Answer), cacheTTL)
+	return nil
 }
 
 // buildRedisKey creates a consistent Redis key format

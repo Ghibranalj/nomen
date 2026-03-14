@@ -34,7 +34,9 @@ func main() {
 	log.Println("Connected to Redis")
 
 	// Initialize static router records
-	initRouterRecords(redisClient, cfg.Mikrotik, cfg.RouterTLD, cfg.DnsTTLMinutes)
+	if err := initRouterRecords(redisClient, cfg.Mikrotik, cfg.RouterTLD, cfg.DnsTTLMinutes); err != nil {
+		log.Fatalf("Failed to initialize router records: %v", err)
+	}
 
 	scraper := NewScraper(redisClient, cfg.Mikrotik, cfg.ScrapeIntervalMinutes, cfg.DnsTTLMinutes)
 	scraper.Start()
@@ -63,8 +65,7 @@ func main() {
 }
 
 // initRouterRecords stores static router A records in Redis at startup
-func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTLD string, ttlMinutes int) {
-	ttl := time.Duration(ttlMinutes) * time.Minute
+func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTLD string, ttlMinutes int) error {
 
 	log.Println("Initializing router DNS records...")
 
@@ -83,21 +84,27 @@ func initRouterRecords(redisClient *redis.Client, mikrotiks []Mikrotik, routerTL
 		routerDomain = strings.ToLower(routerDomain)
 
 		msg := new(dns.Msg)
-		msg.SetQuestion(routerDomain + ".", dns.TypeA)
+		msg.SetQuestion(routerDomain+".", dns.TypeA)
 		msg.Response = true
 		msg.RecursionAvailable = true
 
+		dnsTTL := cfg.DnsTTLMinutes
 		rr := &dns.A{
 			Hdr: dns.RR_Header{
 				Name:   routerDomain + ".",
 				Rrtype: dns.TypeA,
 				Class:  dns.ClassINET,
-				Ttl:    uint32(ttl.Seconds()),
+				Ttl:    uint32(dnsTTL),
 			},
 			A: net.ParseIP(mikrotik.IP),
 		}
 		msg.Answer = append(msg.Answer, rr)
 
-		CacheDNS(redisClient, routerDomain, "A", msg, ttl)
+		ttl := time.Duration(0) // ZERO = permanent storage
+
+		if err := CacheDNS(redisClient, routerDomain, "A", msg, ttl); err != nil {
+			return fmt.Errorf("cache router record %s: %w", routerDomain, err)
+		}
 	}
+	return nil
 }

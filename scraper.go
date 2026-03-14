@@ -125,7 +125,9 @@ func (s *Scraper) scrape() {
 			msg.Answer = append(msg.Answer, rr)
 
 			// Cache using wire format
-			CacheDNS(s.RedisClient, domain, "A", msg, s.TTL)
+			if err := CacheDNS(s.RedisClient, domain, "A", msg, s.TTL); err != nil {
+				log.Printf("Failed to cache %s: %v\n", domain, err)
+			}
 		}
 	}
 }
