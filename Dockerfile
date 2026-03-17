@@ -21,9 +21,6 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/nomen .
 
-# Copy config file
-COPY config.yaml .
-
 EXPOSE 53 53/udp
 
 CMD ["./nomen"]

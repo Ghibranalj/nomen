@@ -91,6 +91,11 @@ func (s *Scraper) scrape() {
 			macAddress := re.Map["mac-address"]
 			status := re.Map["status"]
 
+			comment, ok := re.Map["comment"]
+			if ok && comment != "" {
+				hostname = comment
+			}
+
 			if hostname == "" {
 				continue
 			}
@@ -109,7 +114,7 @@ func (s *Scraper) scrape() {
 
 			// Create DNS message for A record
 			msg := new(dns.Msg)
-			msg.SetQuestion(domain + ".", dns.TypeA)
+			msg.SetQuestion(domain+".", dns.TypeA)
 			msg.Response = true
 			msg.RecursionAvailable = true
 
